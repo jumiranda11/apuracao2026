@@ -225,7 +225,9 @@ function construirDados(hist) {
     uf[e[1]] = e.slice(2);
     const t = e[0] * 1000;
     let st = 0, ts = 0, a = 0, b = 0, vv = 0, tv = 0;
-    for (const k in uf) { const r = uf[k]; st += r[0]; ts += r[1]; a += r[2]; b += r[3]; vv += r[4]; tv += r[5]; }
+    for (const k in uf) { if (k === 'br') continue; const r = uf[k]; st += r[0]; ts += r[1]; a += r[2]; b += r[3]; vv += r[4]; tv += r[5]; }
+    // o arquivo nacional do TSE costuma andar na frente dos arquivos por estado: ele manda no total (e na música)
+    if (uf.br) [st, ts, a, b, vv, tv] = uf.br;
     const s = { t, st, ts, a, b, vv, tv, uf: { ...uf }, pst: ts ? 100 * st / ts : 0 };
     s.sh = { [DUELO.a]: a + b ? 100 * a / (a + b) : 0, [DUELO.b]: a + b ? 100 * b / (a + b) : 0 };
     // um ciclo do gravador gera vários eventos em poucos segundos: junta na mesma fotografia
