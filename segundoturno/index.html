@@ -4,18 +4,759 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Apuração 2026 · 2º turno</title>
-<!-- Pausa: a página ao vivo está guardada em aovivo.html. Para voltar, copie aovivo.html por cima deste index.html. -->
+<meta name="description" content="A apuração do 2º turno virando música em tempo real, em Strudel. por @juliakixx__">
+<!--
+  APURAÇÃO SONORA · 2º TURNO — ao vivo.
+  Os dados vêm de segundo_turno/gravador2.py, que publica historico.json no branch `dados` deste repositório.
+  O total nacional é a soma dos 27 estados + exterior. A música é o mesmo motor do 1º turno (codigo.html),
+  exagerando quem está na frente, e com um som especial quando a liderança troca.
+  Local: python3 -m http.server 8765 na pasta apuracao2026 e abra http://localhost:8765/site/segundoturno/
+  ?dados=<url> troca a fonte (ex.: ../../segundo_turno/dados/historico_sim.json para o ensaio)
+  Atalhos: espaço = som · ← / → = volta/avança 1 min · L = ao vivo
+-->
 <link href="https://cdnjs.cloudflare.com/ajax/libs/hack-font/3.3.0/web/hack.min.css" rel="stylesheet">
 <style>
-  html, body { margin: 0; height: 100%; background: #e00000; color: #fff; }
-  body { display: flex; flex-direction: column; align-items: center; justify-content: center; padding: 16px; box-sizing: border-box;
-         font: 400 clamp(18px, 4vw, 40px)/1.4 Hack, monospace; text-align: center; }
-  p { margin: 0 0 0.6em; }
-  .estrela { font-size: 1.6em; line-height: 1; }
+  :root { --bg:#e00000; --fg:#fff; --mut:rgba(255,255,255,.62); --dim:rgba(255,255,255,.28); --faint:rgba(255,255,255,.12) }
+  * { box-sizing:border-box }
+  html, body { margin:0; background:var(--bg); color:var(--fg) }
+  body { font:14px/1.45 Hack, ui-monospace, monospace; min-height:100dvh; display:flex; flex-direction:column; transition:background .25s, color .25s }
+  a { color:inherit }
+  button, select { font:inherit; color:var(--fg); background:transparent; border:1px solid var(--dim); padding:6px 12px; cursor:pointer; border-radius:0 }
+  button:hover, select:hover { border-color:var(--fg) }
+  button.on { background:var(--fg); color:var(--bg); border-color:var(--fg) }
+  select option { color:#000 }
+
+  header { display:flex; flex-wrap:wrap; gap:6px 18px; align-items:baseline; padding:14px 22px 0 }
+  #quando { margin-left:auto }
+  #insta { text-decoration:none; font-size:14px }
+  #insta:hover { text-decoration:underline }
+  header h1 { margin:0; font-size:13px; font-weight:400; letter-spacing:.14em }
+  #quando { color:var(--mut) }
+  #quando b { color:var(--fg); font-weight:400 }
+  #quando .vivo::before { content:"● "; animation:pisca 1.4s infinite }
+  @keyframes pisca { 50% { opacity:.25 } }
+
+  main { flex:1; display:grid; grid-template-columns:minmax(0,1fr) minmax(0,1.4fr); grid-template-rows:auto auto 1fr; gap:22px 36px; padding:14px 22px 8px }
+  section h2 { margin:0 0 8px; font-size:11px; font-weight:400; letter-spacing:.14em; color:var(--mut) }
+
+  /* duelo */
+  #duelo { display:grid; grid-template-columns:var(--cols, 1fr 1fr); gap:6px 20px; align-items:end; transition:grid-template-columns .8s }
+  .cand { transition:opacity .6s; min-width:0 }
+  .cand .nome { font-size:13px; letter-spacing:.14em; display:flex; gap:8px; align-items:baseline }
+  .cand .pct { font-size:var(--fs, 48px); line-height:1; letter-spacing:-.02em; transition:font-size .8s; white-space:nowrap }
+  .cand .vot { color:var(--mut); margin-top:4px }
+  .cand.atras { opacity:.5 }
+  .cand.b { text-align:right }
+  .cand.b .nome { justify-content:flex-end }
+  .tag { font-size:10px; border:1px solid var(--fg); padding:0 5px; letter-spacing:.1em; visibility:hidden }
+  .cand.frente .tag { visibility:visible }
+  #barra { grid-column:1 / -1; height:14px; border:1px solid var(--fg); position:relative; margin-top:8px }
+  #barra i { position:absolute; inset:0 auto 0 0; background:var(--fg) }
+  #barra::after { content:""; position:absolute; left:50%; top:-5px; bottom:-5px; border-left:1px dashed var(--fg) }
+  #aviso { grid-column:1 / -1; color:var(--mut); min-height:1.45em }
+
+  /* urnas */
+  #urnas .linha { display:flex; flex-wrap:wrap; gap:4px 18px; align-items:baseline }
+  #urnas .grande { font-size:clamp(24px, 2.8vw, 36px); line-height:1.1 }
+  #urnas .prog { height:6px; background:var(--faint); margin:8px 0 6px; position:relative }
+  #urnas .prog i { position:absolute; inset:0 auto 0 0; background:var(--fg) }
+  #urnas .mut { color:var(--mut) }
+
+  /* regiões */
+  #regioes .grade { display:grid; grid-template-columns:repeat(3, minmax(0,1fr)); gap:12px 18px }
+  .reg { min-width:0 }
+  .reg .t { display:flex; justify-content:space-between; gap:6px; font-size:12px; letter-spacing:.08em }
+  .reg .t span { color:var(--mut); letter-spacing:0 }
+  .reg .b { height:8px; border:1px solid var(--fg); position:relative; margin:5px 0 4px }
+  .reg .b i { position:absolute; inset:0 auto 0 0; background:var(--fg); transition:width .8s }
+  .reg .b::after { content:""; position:absolute; left:50%; top:-3px; bottom:-3px; border-left:1px dashed var(--fg); opacity:.7 }
+  .reg .n { display:flex; justify-content:space-between; font-size:12px; color:var(--mut) }
+  .reg .n b { color:var(--fg); font-weight:400 }
+  .reg .ufs { font-size:10px; color:var(--mut); margin-top:2px; letter-spacing:.04em; white-space:nowrap; overflow:hidden; text-overflow:ellipsis }
+
+  /* código */
+  #codigo { grid-row:1 / span 3; grid-column:2; min-width:0; display:flex; flex-direction:column }
+  #codigo pre { margin:0; flex:1; min-height:0; font:var(--cfs, 12px)/1.45 Hack, monospace; white-space:pre; overflow:hidden; border-left:1px solid var(--dim); padding:2px 0 2px 16px;
+                columns:2 250px; column-gap:22px; column-fill:balance }
+  #codigo .c { color:var(--mut) }
+  #codigo .v { transition:background .5s, color .5s }
+  #codigo .v.fl { background:var(--fg); color:var(--bg); transition:none }
+  #codigo .blk { display:block; break-inside:avoid; overflow:hidden; transition:opacity .6s }
+  #codigo .pr { color:var(--mut) }
+  #codigo .v.on { outline:1.5px solid var(--fg); outline-offset:1px; border-radius:2px }
+  #codigo canvas.roll { display:block; width:calc(100% - 3ch); max-width:520px; height:2.6em; margin:4px 0 0 3ch }
+  #codigo .blk.mudo { opacity:.38 }
+  #codigo .blk.lider .c::after { content:" ◀" }
+
+  /* linha do tempo */
+  #tempo { position:sticky; bottom:0; z-index:3; background:var(--bg); border-top:1px solid var(--faint); padding:8px 22px 4px; display:flex; flex-wrap:wrap; gap:8px 10px; align-items:center }
+  #status { flex-basis:100%; font-size:11px; color:var(--mut); margin-top:-6px }
+  #trilho { flex:1 1 320px; position:relative; height:28px; cursor:pointer; touch-action:none }
+  #trilho .base { position:absolute; left:0; right:0; top:13px; height:2px; background:var(--dim) }
+  #trilho .feito { position:absolute; left:0; top:13px; height:2px; background:var(--fg) }
+  #trilho .cab { position:absolute; top:5px; width:2px; height:18px; background:var(--fg); margin-left:-1px }
+  #trilho .vir { position:absolute; top:8px; width:1px; height:12px; background:var(--fg); opacity:.8 }
+  #trilho .vir::after { content:"⇄"; position:absolute; top:-12px; left:-4px; font-size:9px }
+  #trilho .hora { position:absolute; top:24px; font-size:10px; color:var(--mut); transform:translateX(-50%); white-space:nowrap }
+  #trilho { margin-bottom:10px }
+  #bSom { font-size:15px; padding:8px 16px }
+  #vol { width:84px; accent-color:var(--fg) }
+
+  /* tela inteira, sem rolar (computador) */
+  @media (min-width: 901px) {
+    body { height:100dvh; overflow:hidden }
+    main { min-height:0 }
+    #codigo { min-height:0 }
+  }
+
+  @media (max-width: 900px) {
+    main { grid-template-columns:minmax(0,1fr); padding:14px 16px 8px; gap:24px }
+    #codigo { grid-row:auto; grid-column:auto }
+    #codigo pre { font-size:11px; max-height:none }
+    header, #tempo { padding-left:16px; padding-right:16px }
+    #codigo pre { columns:auto; overflow-x:auto }
+    #regioes .grade { grid-template-columns:repeat(2, minmax(0,1fr)) }
+  }
 </style>
 </head>
 <body>
-  <p>voltamos às 19h</p>
-  <div class="estrela">⭐️</div>
+<header>
+  <h1>APURAÇÃO · 2º TURNO · PRESIDENTE · 2026</h1>
+  <div id="quando">carregando…</div>
+  <a id="insta" href="https://www.instagram.com/juliakixx__/" target="_blank" rel="noopener">@juliakixx__</a>
+</header>
+
+<main>
+  <section id="placar">
+    <div id="duelo">
+      <div class="cand a" id="cA"><div class="nome">LULA <span class="tag">NA FRENTE</span></div><div class="pct" id="pA">–</div><div class="vot" id="vA">&nbsp;</div></div>
+      <div class="cand b" id="cB"><div class="nome"><span class="tag">NA FRENTE</span> FLÁVIO</div><div class="pct" id="pB">–</div><div class="vot" id="vB">&nbsp;</div></div>
+      <div id="barra"><i id="barraI" style="width:50%"></i></div>
+      <div id="aviso"></div>
+    </div>
+  </section>
+
+  <section id="urnas">
+    <h2>URNAS APURADAS</h2>
+    <div class="linha"><span class="grande" id="uSt">0</span><span class="mut" id="uTs">de 499.248</span><span class="grande" id="uPct" style="margin-left:auto">0,00%</span></div>
+    <div class="prog"><i id="uBar" style="width:0"></i></div>
+    <div class="linha mut"><span id="uVotos">0 votos apurados</span><span id="uValidos"></span></div>
+  </section>
+
+  <section id="regioes">
+    <h2>REGIÕES <span style="letter-spacing:0">· % de urnas apuradas · barra cheia = Lula, vazia = Flávio</span></h2>
+    <div class="grade" id="grade"></div>
+  </section>
+
+  <section id="codigo">
+    <h2>O CÓDIGO TOCANDO AGORA · STRUDEL</h2>
+    <pre id="code"></pre>
+  </section>
+</main>
+
+<div id="tempo">
+  <button id="bSom" title="Espaço">▶ ouvir</button>
+  <button id="bVivo" title="L">● ao vivo</button>
+  <select id="vel" title="Velocidade ao voltar no tempo">
+    <option value="0">■ fixo</option><option value="1" selected>×1</option><option value="10">×10</option><option value="60">×60</option><option value="300">×300</option>
+  </select>
+  <div id="trilho" title="Volte a qualquer momento da apuração"><div class="base"></div><div class="feito" id="feito"></div><div id="marcas"></div><div class="cab" id="cab"></div></div>
+  <input id="vol" type="range" min="0" max="1" step="0.01" value="0.8" title="Volume">
+  <span id="status">dados: TSE · soma dos 27 estados + exterior</span>
+</div>
+
+<script>
+'use strict';
+
+/* ───────────── 1. configuração ───────────── */
+const REPO = 'jumiranda11/apuracao2026';
+const TAXA_REF = 0.012;        // %/s em janela de 3 min — o pico do 1º turno
+const JANELA = 180;            // s, para medir o ritmo
+const PARADO_APOS = 8 * 60;    // s sem mudar o % → contagem parou
+const ATRASO_VIVO = 150;       // s: ao vivo, a música segura o último dado por até isso
+const MIN_VIRADA = 1;          // % de urnas mínimo para contar virada (no começo troca toda hora)
+const SEGURA_VIRADA = 45;      // s que o novo líder precisa ficar na frente para valer a virada (empate troca toda hora)
+
+const MODOS = { jonio: [0, 2, 4, 5, 7, 9, 11], eolio: [0, 2, 3, 5, 7, 8, 10] };
+const NOME_MODO = { jonio: 'maior', eolio: 'menor' };
+// o mesmo motor do 1º turno (codigo.html): Lula em modo maior à esquerda, Flávio em modo menor à direita
+const CANDIDATOS = {
+  '13': { nome: 'Lula',   modo: 'jonio', vogal: 'a', base: 62, linha: [2, 4, 2, 7, 6, 4], timbre: 'sine',     pan: 0.15, ajuste: 1.8 },
+  '22': { nome: 'Flávio', modo: 'eolio', vogal: 'o', base: 62, linha: [2, 4, 7, 4, 2, 0], timbre: 'sawtooth', pan: 0.85, ajuste: 1 },
+};
+const DUELO = { a: '13', b: '22', escala: 8 };
+const MUDAS = new Set();   // ids aqui viram _$: no código: aparecem na tela, mas não tocam
+const RAIZ = 50;
+const REGIOES = [
+  ['NORTE', ['ac', 'ap', 'am', 'pa', 'ro', 'rr', 'to']],
+  ['NORDESTE', ['al', 'ba', 'ce', 'ma', 'pb', 'pe', 'pi', 'rn', 'se']],
+  ['CENTRO-OESTE', ['df', 'go', 'mt', 'ms']],
+  ['SUDESTE', ['es', 'mg', 'rj', 'sp']],
+  ['SUL', ['pr', 'rs', 'sc']],
+  ['EXTERIOR', ['zz']],
+];
+
+/* ───────────── 2. utilidades ───────────── */
+const $ = id => document.getElementById(id);
+const clamp = (x, a, b) => Math.max(a, Math.min(b, x));
+const lerp = (a, b, t) => a + (b - a) * t;
+const rampa = (p, a, b) => clamp((p - a) / (b - a), 0, 1);
+const grau = (modo, d) => { const o = Math.floor(d / 7), i = ((d % 7) + 7) % 7; return modo[i] + 12 * o; };
+const hash = (i, sem = 0) => { const x = Math.sin((i + 1) * 12.9898 + sem * 78.233) * 43758.5453; return x - Math.floor(x); };
+const passo = (t, porCiclo, len) => ((Math.floor(t * porCiclo + 1e-6) % len) + len) % len;
+const NOTAS = ['c', 'c#', 'd', 'd#', 'e', 'f', 'f#', 'g', 'g#', 'a', 'a#', 'b'];
+const nn = m => { const r = Math.round(m); return NOTAS[((r % 12) + 12) % 12] + (Math.floor(r / 12) - 1); };
+const f2 = x => (x || 0).toFixed(2).replace(/^0\./, '.');
+const hz = x => String(Math.round(x));
+const fmtPct = (x, d = 2) => (x || 0).toLocaleString('pt-BR', { minimumFractionDigits: d, maximumFractionDigits: d }) + '%';
+const fmtInt = x => Math.round(x || 0).toLocaleString('pt-BR');
+const hora = (ms, seg = true) => new Date(ms).toLocaleTimeString('pt-BR', { timeZone: 'America/Sao_Paulo', hour: '2-digit', minute: '2-digit', ...(seg ? { second: '2-digit' } : {}) });
+const modoDe = n => MODOS[(CANDIDATOS[n] && CANDIDATOS[n].modo) || 'jonio'];
+const status = m => { $('status').textContent = m; };
+
+/* ───────────── 3. dados: eventos por estado → fotografias nacionais ───────────── */
+let DATA = null;
+const PLAY = { t: Date.now(), vivo: true, vel: 1, arrastando: false };
+
+function construirDados(hist) {
+  const ev = (hist.ev || []).slice().sort((x, y) => x[0] - y[0]);
+  const uf = {}, snaps = [];
+  for (const e of ev) {
+    uf[e[1]] = e.slice(2);
+    const t = e[0] * 1000;
+    let st = 0, ts = 0, a = 0, b = 0, vv = 0, tv = 0;
+    for (const k in uf) { if (k === 'br') continue; const r = uf[k]; st += r[0]; ts += r[1]; a += r[2]; b += r[3]; vv += r[4]; tv += r[5]; }
+    // o arquivo nacional do TSE costuma andar na frente dos arquivos por estado: ele manda no total (e na música)
+    if (uf.br) [st, ts, a, b, vv, tv] = uf.br;
+    const s = { t, st, ts, a, b, vv, tv, uf: { ...uf }, pst: ts ? 100 * st / ts : 0 };
+    s.sh = { [DUELO.a]: a + b ? 100 * a / (a + b) : 0, [DUELO.b]: a + b ? 100 * b / (a + b) : 0 };
+    // um ciclo do gravador gera vários eventos em poucos segundos: junta na mesma fotografia
+    const ult = snaps[snaps.length - 1];
+    if (ult && t - ult.t0 < 10000) { s.t0 = ult.t0; snaps[snaps.length - 1] = s; } else { s.t0 = t; snaps.push(s); }
+  }
+  // quando o % mudou pela última vez e quem lidera
+  // liderConf = líder confirmado: só troca quando o novo líder se segura na frente por SEGURA_VIRADA
+  let ultMud = null, ultPst = -1, conf = null, cand = null, desde = 0;
+  const viradas = [];
+  for (const s of snaps) {
+    if (s.pst !== ultPst) { ultPst = s.pst; ultMud = s.t; }
+    s.ultMud = ultMud;
+    const l = s.pst >= MIN_VIRADA && s.a !== s.b ? (s.a > s.b ? DUELO.a : DUELO.b) : null;
+    if (l && !conf) conf = l;
+    if (l && l !== conf) {
+      if (l !== cand) { cand = l; desde = s.t; }
+      if (s.t - desde >= SEGURA_VIRADA * 1000) { viradas.push({ t: s.t, para: l, pst: s.pst }); conf = l; cand = null; }
+    } else cand = null;
+    s.liderConf = conf;
+  }
+  const primeiro = snaps.find(s => s.st > 0);
+  const t0 = snaps.length ? (primeiro ? Math.max(snaps[0].t, primeiro.t - 5 * 60000) : snaps[0].t) : Date.now();
+  return { snaps, viradas, t0, t1: snaps.length ? snaps[snaps.length - 1].t : t0, atualizado: (hist.atualizado || 0) * 1000 };
+}
+
+function indice(t) {
+  const r = DATA.snaps;
+  if (!r.length || t < r[0].t) return -1;
+  let lo = 0, hi = r.length - 1;
+  while (lo < hi) { const m = (lo + hi + 1) >> 1; if (r[m].t <= t) lo = m; else hi = m - 1; }
+  return lo;
+}
+function pstEm(t) {
+  const i = indice(t); if (i < 0) return 0;
+  const a = DATA.snaps[i], b = DATA.snaps[i + 1];
+  return b ? lerp(a.pst, b.pst, clamp((t - a.t) / (b.t - a.t), 0, 1)) : a.pst;
+}
+
+const VAZIO = { pst: 0, st: 0, ts: 0, a: 0, b: 0, vv: 0, tv: 0, sh: {}, uf: {}, lider: null, segundo: null, margem: 0, rit: 0, parado: 0, rec: null };
+function amostra(t) {
+  if (!DATA || !DATA.snaps.length) return { ...VAZIO };
+  const i = indice(t);
+  if (i < 0) return { ...VAZIO };
+  const a = DATA.snaps[i], b = DATA.snaps[i + 1];
+  const S = { ...a, rec: a, idx: i };
+  if (b && !PLAY.vivo) {                                  // entre duas fotografias, desliza (só voltando no tempo)
+    const f = clamp((t - a.t) / (b.t - a.t), 0, 1);
+    for (const k of ['pst', 'st', 'a', 'b', 'vv', 'tv']) S[k] = lerp(a[k], b[k], f);
+    const tot = S.a + S.b;
+    S.sh = { [DUELO.a]: tot ? 100 * S.a / tot : 0, [DUELO.b]: tot ? 100 * S.b / tot : 0 };
+  }
+  // ao vivo o "agora" da música é o último dado, até ATRASO_VIVO; depois o tempo anda e a música esfria
+  const tm = PLAY.vivo ? Math.max(DATA.t1, Date.now() - ATRASO_VIVO * 1000) : t;
+  S.rit = clamp((pstEm(tm) - pstEm(tm - JANELA * 1000)) / JANELA / TAXA_REF, 0, 1.2);
+  S.parado = S.pst > 0 && (S.pst >= 99.95 || (tm - a.ultMud) / 1000 > PARADO_APOS) ? 1 : 0;
+  const sa = S.sh[DUELO.a] || 0, sb = S.sh[DUELO.b] || 0;
+  S.lider = S.pst > 0 && sa !== sb ? (sa > sb ? DUELO.a : DUELO.b) : null;
+  S.segundo = S.lider ? (S.lider === DUELO.a ? DUELO.b : DUELO.a) : null;
+  S.margem = Math.abs(sa - sb);
+  return S;
+}
+
+/* fonte dos dados, do mais rápido ao mais garantido:
+   1. túnel do gravador (Cloudflare, ~15 s): só os eventos novos, a cada 5 s — o endereço vem no historico.json
+   2. API do GitHub (1–2 min, 60 leituras/hora por IP) → 3. raw.githubusercontent (até 5 min)
+   local (ensaio): o arquivo direto do disco. ?vivo=<url> força um túnel/servidor (ex.: http://localhost:8766) */
+const qs = new URLSearchParams(location.search);
+const LOCAL = /^(localhost|127\.0\.0\.1|\[::1\])$/.test(location.hostname);
+const FONTE = { etag: null, apiAte: 0, n: 0, erro: null, ev: null, vivo: qs.get('vivo'), falhas: 0, falhouEm: 0, via: '' };
+const VIA = { tunel: 'ao vivo (~15 s)', github: 'pelo GitHub (1–2 min)', raw: 'pelo GitHub (até 5 min)', local: 'local' };
+
+function aplicar(hist) {
+  const novo = construirDados(hist);
+  const antes = DATA;
+  DATA = novo; FONTE.n++; FONTE.erro = null;
+  if (!antes) { PLAY.t = Date.now(); PLAY.vivo = true; desenharMarcas(); }
+  else if (novo.snaps.length !== antes.snaps.length) desenharMarcas();
+}
+async function buscarTunel() {
+  const n = FONTE.ev ? FONTE.ev.length : 0;
+  const r = await fetch(`${FONTE.vivo}/novos?n=${n}`, { cache: 'no-store' });
+  if (!r.ok) throw new Error('túnel HTTP ' + r.status);
+  const j = await r.json();
+  if (!FONTE.ev || j.total < n) {                       // primeira vez, ou o gravador recomeçou: pede tudo
+    const h = await (await fetch(`${FONTE.vivo}/historico.json`, { cache: 'no-store' })).json();
+    FONTE.ev = h.ev; aplicar(h);
+  } else if (j.ev.length) { FONTE.ev.push(...j.ev); aplicar({ ev: FONTE.ev, atualizado: j.atualizado }); }
+  FONTE.falhas = 0; FONTE.via = VIA.tunel;
+}
+const tunelOk = () => FONTE.vivo && (FONTE.falhas < 3 || Date.now() - FONTE.falhouEm > 120000);
+async function buscar() {
+  if (tunelOk()) {
+    try { await buscarTunel(); return; }
+    catch (e) { console.warn(e); FONTE.falhas++; FONTE.falhouEm = Date.now(); if (FONTE.falhas < 3) return; }
+  }
+  let url, op = { cache: 'no-store', headers: {} }, viaApi = false;
+  if (qs.get('dados') || LOCAL) { url = (qs.get('dados') || '../../segundo_turno/dados/historico.json') + '?t=' + Date.now(); FONTE.via = VIA.local; }
+  else if (Date.now() > FONTE.apiAte) {
+    viaApi = true; FONTE.via = VIA.github;
+    url = `https://api.github.com/repos/${REPO}/contents/historico.json?ref=dados`;
+    op.headers.Accept = 'application/vnd.github.raw';
+    if (FONTE.etag) op.headers['If-None-Match'] = FONTE.etag;
+  } else { url = `https://raw.githubusercontent.com/${REPO}/dados/historico.json`; FONTE.via = VIA.raw; }
+  try {
+    const r = await fetch(url, op);
+    if (r.status === 304) { FONTE.erro = null; return; }
+    if (viaApi && (r.status === 403 || r.status === 429)) {
+      const reset = Number(r.headers.get('x-ratelimit-reset')) * 1000;
+      FONTE.apiAte = reset > Date.now() ? reset : Date.now() + 15 * 60000;
+      return buscar();
+    }
+    if (r.status === 404) { FONTE.erro = 'aguardando o primeiro dado do TSE'; return; }
+    if (!r.ok) throw new Error('HTTP ' + r.status);
+    if (viaApi) FONTE.etag = r.headers.get('ETag');
+    const hist = await r.json();
+    FONTE.ev = hist.ev.slice();
+    // o gravador põe aqui o endereço do túnel: dali em diante a página pergunta direto a ele
+    if (!qs.get('vivo') && hist.vivo !== FONTE.vivo) { FONTE.vivo = hist.vivo || null; FONTE.falhas = 0; }
+    aplicar(hist);
+  } catch (e) { console.warn(e); FONTE.erro = 'sem conexão com os dados (tentando de novo)'; }
+}
+function agendar() {
+  buscar().finally(() => {
+    if (!AUDIO.erro) status(`dados: TSE · soma dos 27 estados + exterior · ${FONTE.via}`);
+    setTimeout(agendar, tunelOk() || qs.get('dados') || LOCAL ? 5000 : 60000);
+  });
+}
+
+/* ───────────── 4. motor: dados → parâmetros (mesmas fórmulas do 1º turno, exagerando o líder) ───────────── */
+const W = {
+  vol: 0.8, master: 0, droneGain: 0, lpf: 800, pad: [50, 53, 57, 60], padGain: 0, modoLider: MODOS.jonio,
+  vozes: [], pulseGain: 0, act: 0, pratoGain: 0, bal: 0, dif: 0, maior: 0.5, ton: 0, cps: 0.5, cpsAplicado: null,
+  parado: 0, padMasc: [1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0], padHits: 1, padAtk: 0.6, padRel: 3, padLpf: 600, padQ: 2, padPan: 0.5, padDet: 0, aperto: 0,
+  lider: null,
+};
+W.vozes = [DUELO.a, DUELO.b].map(n => ({ n, ...CANDIDATOS[n], modoArr: modoDe(n), gain: 0, detune: 0 }));
+
+// mesmas fórmulas do 1º turno; só o volume e o andamento foram equalizados
+function atualizarMotor(S, dt) {
+  const p = S.pst / 100;
+  const master = W.master = W.vol * 0.55;               // volume fixo (no 1º turno crescia de 20% a 100% com as urnas)
+  W.droneGain = master * 0.55;
+  W.lpf = 700 + 4200 * Math.pow(p, 1.2);
+  W.lider = S.lider;
+  W.modoLider = S.lider ? modoDe(S.lider) : MODOS.jonio;
+  const dif = (S.sh[DUELO.b] || 0) - (S.sh[DUELO.a] || 0);
+  W.dif = dif; W.bal = S.pst > 0 ? Math.tanh(dif / DUELO.escala) : 0;
+  W.maior = (1 - W.bal) / 2;
+  W.ton = -Math.round(4 * W.bal);
+  const R0 = RAIZ + W.ton;
+  W.pad = [R0, R0 + 3 + W.maior, R0 + 7, R0 + 10 + W.maior];
+  const ap = W.aperto = 1 - Math.abs(W.bal);
+  W.padHits = clamp(Math.round(1 + 6 * Math.pow(ap, 1.1)), 1, 7);
+  W.padMasc = mascara(R_PAD[W.padHits - 1]);
+  W.padAtk = lerp(0.7, 0.008, ap);
+  W.padRel = lerp(3.2, 0.22, ap);
+  W.padLpf = 350 + 5200 * Math.pow(ap, 1.3) * (0.45 + 0.55 * p);
+  W.padQ = 1 + 16 * Math.pow(ap, 1.5);
+  W.padPan = 0.5 + 0.38 * W.bal;
+  W.padDet = 0.35 * ap;
+  W.padGain = S.lider ? master * (0.11 + 0.07 * ap) : 0;  // mais baixo que no 1º turno e sem a rampa de entrada
+
+  const tensao = S.lider ? clamp(1 - S.margem / 6, 0, 1) : 0;
+  for (const v of W.vozes) {
+    const s = S.sh[v.n] || 0;
+    const lado = v.n === DUELO.b ? (1 + W.bal) / 2 : (1 - W.bal) / 2;
+    v.gain = s > 0 ? Math.min(1, master * 0.85 * Math.pow(lado, 1.5)) : 0;
+    v.detune = v.n === S.segundo ? tensao * 0.45 : 0;
+  }
+
+  W.act = lerp(W.act, S.rit || 0, 1 - Math.exp(-dt / 3));
+  W.pulseGain = (W.vol * 0.16 + master * 0.12) * (1 + 0.2 * clamp(W.act, 0, 1));
+
+  // contagem parada: no 1º turno quase tudo sumia; aqui a música só baixa um pouco
+  W.parado = lerp(W.parado, S.parado, 1 - Math.exp(-dt / 1.5));
+  const resto = 1 - 0.3 * W.parado;
+  W.padGain *= resto; W.pulseGain *= resto;
+  W.pratoGain = W.pulseGain * 0.6;
+  for (const v of W.vozes) v.gain *= resto;
+  W.droneGain = master * (0.55 + 0.2 * W.parado);
+
+  // andamento: quem manda é o aperto do duelo. Folgado ≈ 0,4 cps (96 bpm); empate ≈ 1 cps (240 bpm).
+  // a velocidade da contagem só dá um empurrão pequeno (+0,1)
+  const alvoCps = lerp(lerp(0.4, 0.5, Math.sqrt(clamp(W.act, 0, 1))), 0.38, W.parado) + 0.5 * Math.pow(S.lider ? W.aperto : 0, 1.5);
+  W.cps = lerp(W.cps, alvoCps, 1 - Math.exp(-dt / 4));
+  if (AUDIO.on && (W.cpsAplicado == null || Math.abs(W.cps - W.cpsAplicado) > 0.01)) {
+    try { if (typeof window.setcps === 'function') window.setcps(W.cps); W.cpsAplicado = W.cps; } catch (e) {}
+  }
+}
+
+/* ───────────── 5. áudio (Strudel) ───────────── */
+const AUDIO = { on: false, padrao: null, carregando: null };
+function carregarStrudel() {
+  if (AUDIO.carregando) return AUDIO.carregando;
+  AUDIO.carregando = new Promise((res, rej) => {
+    const urls = ['https://unpkg.com/@strudel/web@1.3.0', 'https://cdn.jsdelivr.net/npm/@strudel/web@1.3.0'];
+    let i = 0;
+    const tentar = () => {
+      if (i >= urls.length) return rej(new Error('não consegui carregar o Strudel (sem internet?)'));
+      const sc = document.createElement('script'); sc.src = urls[i++];
+      sc.onload = async () => { try { AUDIO.repl = await window.initStrudel(); res(); } catch (e) { rej(e); } };
+      sc.onerror = tentar; document.head.appendChild(sc);
+    };
+    tentar();
+  });
+  return AUDIO.carregando;
+}
+const ARP = [0, 4, 7, 9, 11, 9, 7, 4];
+// ritmos sincopados numa grade de 16 (1 = toca): nada cai só no tempo forte
+const R_PULSO = [1, 0, 0, 1, 0, 0, 1, 0, 0, 1, 0, 1, 0, 0, 1, 0];          // 3+3+3+2+3+2
+const R_VOZ = [1, 0, 0, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0, 0, 0, 0];            // 3 notas por ciclo, deslocadas: 0, 3/8, 5/8
+const R_PRATO = [0, 0, .6, 0, 0, 1, 0, 0, 0, 0, .6, 0, 0, 1, 0, .6];       // contratempos com acento
+// pad: de 1 a 7 ataques por ciclo conforme o aperto, sempre fora da grade quadrada
+const R_PAD = [[0], [0, 10], [0, 6, 12], [0, 6, 10, 14], [0, 3, 6, 10, 13], [0, 3, 6, 8, 11, 14], [0, 2, 5, 7, 10, 12, 14]];
+const mascara = pos => Array.from({ length: 16 }, (_, i) => pos.includes(i) ? 1 : 0);
+// qual nota da sequência cai no passo i: conta os ataques desde o começo
+const ordem = (r, t) => { const i = passo(t, 16, 16), n = r.filter(Boolean).length, c = Math.floor(t + 1e-6);
+  let k = 0; for (let j = 0; j < i; j++) if (r[j]) k++; return c * n + k; };
+function construirPadrao() {
+  const { note, stack, signal } = window;
+  const g = f => signal(() => { const x = f(); return Number.isFinite(x) ? x : 0; });
+  const nt = f => signal(t => { const x = f(Number(t)); return Number.isFinite(x) ? x : 60; });
+  const P = [], CAM = AUDIO.camadas = {};
+  const add = (id, p) => { if (MUDAS.has(id)) return; P.push(p); (CAM[id] = CAM[id] || []).push(p); };
+  // bordão
+  add('bordao', note(nt(() => RAIZ + W.ton - 12 + (W.parado > 0.5 ? 12 : 0)).segment(1)).s('triangle').attack(1.5)
+    .release(g(() => 2.5 + 6 * W.parado)).lpf(g(() => 320 + 900 * W.parado)).gain(g(() => W.droneGain)));
+  // pad: o duelo (duas camadas, a 2ª desafinada = batimento)
+  const masc = t => W.padMasc[passo(t, 16, 16)];
+  for (const camada of [0, 1]) for (let j = 0; j < 4; j++) {
+    add('pad', note(nt(() => W.pad[j] + (camada ? W.padDet : 0)).segment(16)).s(camada ? 'square' : 'sawtooth')
+      .attack(g(() => W.padAtk)).release(g(() => W.padRel)).lpf(g(() => W.padLpf)).lpq(g(() => W.padQ))
+      .pan(g(() => clamp(W.padPan + (camada ? 0.1 : -0.1), 0, 1)))
+      .gain(signal(t => { const x = W.padGain * (camada ? 0.55 : 1) * masc(Number(t)); return Number.isFinite(x) ? x : 0; })));
+  }
+  // vozes
+  W.vozes.forEach(v => {
+    let p = note(nt(t => v.base + W.ton + grau(v.modoArr, v.linha[ordem(R_VOZ, t) % v.linha.length]) + v.detune).segment(16))
+      .s(v.timbre).attack(0.3).release(1.4).lpf(g(() => W.lpf * 1.25)).pan(v.pan)
+      .gain(signal(t => { const x = v.gain * v.ajuste * R_VOZ[passo(Number(t), 16, 16)]; return Number.isFinite(x) ? x : 0; }));
+    if (typeof p.vowel === 'function') p = p.vowel(v.vogal);
+    add('v' + v.n, p);
+  });
+  // prato: contratempos
+  add('prato', note(nt(() => 84).segment(16)).s('white').hpf(7000).attack(0.002).decay(0.3).sustain(0).pan(0.55)
+    .gain(signal(t => { const x = W.pratoGain * R_PRATO[passo(Number(t), 16, 16)]; return Number.isFinite(x) ? x : 0; })));
+  // pulso: arpejo no modo de quem lidera (timbre do 1º turno)
+  add('pulso', note(nt(t => RAIZ + W.ton - 12 + grau(W.modoLider, ARP[ordem(R_PULSO, t) % ARP.length])).segment(16))
+    .s('sawtooth').decay(0.16).sustain(0).lpf(480).lpq(4)
+    .gain(signal(t => { const x = W.pulseGain * 0.7 * R_PULSO[passo(Number(t), 16, 16)]; return Number.isFinite(x) ? x : 0; })));
+  const s = stack(...P);
+  return typeof s.room === 'function' ? s.room(0.4) : s;
+}
+async function ligarAudio() {
+  status('carregando o Strudel…');
+  try {
+    await carregarStrudel();
+    const ac = window.getAudioContext && window.getAudioContext();
+    try { if (ac && ac.resume) await ac.resume(); } catch (e) {}
+    if (typeof window.initAudio === 'function') {
+      await Promise.race([window.initAudio(), new Promise((_, rej) => setTimeout(() => rej(new Error('o motor de áudio não respondeu; recarregue a página')), 10000))]);
+    }
+    if (typeof window.registerSynthSounds === 'function') { try { await window.registerSynthSounds(); } catch (e) {} }
+    if (ac && ac.state !== 'running') throw new Error('o navegador bloqueou o som; clique de novo');
+    AUDIO.padrao = AUDIO.padrao || construirPadrao();
+    AUDIO.padrao.play();
+    AUDIO.on = true; AUDIO.erro = false; W.cpsAplicado = null; status(`dados: TSE · soma dos 27 estados + exterior · ${FONTE.via}`);
+  } catch (e) { console.error(e); AUDIO.erro = true; status('som: ' + e.message); AUDIO.on = false; }
+  syncUI();
+}
+function desligarAudio() { try { window.hush && window.hush(); } catch (e) {} AUDIO.on = false; syncUI(); }
+
+/* ───────────── 6. o código na tela, com pianoroll e realce do que está tocando ───────────── */
+const voz = n => W.vozes.find(v => v.n === n);
+const vl = (k, x) => `<span class="v" data-k="${k}">${x}</span>`;
+const vt = (k, arr) => arr.map((x, i) => vl(k + '_' + i, x)).join(' ');     // cada nota é um token realçável
+const vtAc = (k, arr) => arr.map((x, i) => vl(k + '_' + i, x) + (i === 1 ? '\n          ' : i < arr.length - 1 ? ' ' : '')).join('');   // 4 acordes em 2 linhas
+const PR = '\n   <span class="pr">._pianoroll()</span>';
+// em que ciclo o Strudel está (o relógio do scheduler quando o som está ligado; senão, contamos nós)
+const CLK = { c: 0 };
+function ciclo(dt) {
+  CLK.c += dt * (W.cps || 0.5);
+  const sch = AUDIO.repl && AUDIO.repl.scheduler;
+  if (AUDIO.on && sch && typeof sch.now === 'function') { try { const c = Number(sch.now()); if (Number.isFinite(c)) CLK.c = c; } catch (e) {} }
+  return CLK.c;
+}
+function blocos() {
+  const linhaVoz = v => v.linha.map(d => nn(v.base + W.ton + grau(v.modoArr, d)));
+  return [
+    { id: 'cps', c: '// andamento ← ritmo da apuração', code: `setcps(${vl('cps', f2(W.cps))}) <span class="c">// ${vl('bpm', Math.round(W.cps * 240))} bpm</span>` },
+    { id: 'pulso', roll: true, c: `// pulso: arpejo no modo de quem lidera (${NOME_MODO[W.modoLider === MODOS.eolio ? 'eolio' : 'jonio']})`, mudo: W.pulseGain < 0.005,
+      ativo: c => R_PULSO[passo(c, 16, 16)] ? ['un_' + ordem(R_PULSO, c) % ARP.length, 'us_' + passo(c, 16, 16)] : [], code:
+      `$: note("${vt('un', ARP.map(d => nn(RAIZ + W.ton - 12 + grau(W.modoLider, d))))}")\n   .struct("${vt('us', R_PULSO.map(x => x ? 'x' : '~'))}")\n   .s("sawtooth").decay(.16).lpf(480).lpq(4)\n   .gain(${vl('ug', f2(W.pulseGain * 0.7))})${PR}` },
+    { id: 'bordao', roll: true, c: '// bordão: o chão grave', mudo: W.droneGain < 0.005, ativo: () => ['bn_0'], code:
+      `$: note("${vt('bn', [nn(RAIZ + W.ton - 12 + (W.parado > 0.5 ? 12 : 0))])}").s("triangle").attack(1.5)\n   .release(${vl('br', (2.5 + 6 * W.parado).toFixed(1))}).lpf(${vl('bl', hz(320 + 900 * W.parado))})\n   .gain(${vl('bg', f2(W.droneGain))})${PR}` },
+    { id: 'pad', roll: true, c: `// pad: o duelo · aperto ${Math.round(W.aperto * 100)}%`, mudo: W.padGain < 0.005,
+      ativo: c => { const i = passo(c, 16, 16); return W.padMasc[i] ? ['ps_' + i, 'pn_0', 'pn_1', 'pn_2', 'pn_3'] : []; }, code:
+      `$: note("[${W.pad.map((x, i) => vl('pn_' + i, +x.toFixed(1))).join(',')}]")\n   .struct("${vt('ps', W.padMasc.map(x => x ? 'x' : '~'))}")\n   .s("sawtooth").attack(${vl('pa', f2(W.padAtk))}).release(${vl('pr', f2(W.padRel))})\n   .lpf(${vl('pl', hz(W.padLpf))}).lpq(${vl('pq', W.padQ.toFixed(1))}).pan(${vl('pp', f2(W.padPan))})\n   .gain(${vl('pg', f2(W.padGain))})${PR}` },
+    ...W.vozes.map(v => ({ id: 'v' + v.n, roll: true, c: `// voz ${v.nome.toLowerCase()} · modo ${NOME_MODO[v.modo]}`, lider: W.lider === v.n, mudo: v.gain < 0.01,
+      ativo: c => R_VOZ[passo(c, 16, 16)] ? ['vn' + v.n + '_' + ordem(R_VOZ, c) % v.linha.length, 'vs' + v.n + '_' + passo(c, 16, 16)] : [], code:
+      `$: note("${vt('vn' + v.n, linhaVoz(v))}").slow(2)\n   .struct("${vt('vs' + v.n, R_VOZ.map(x => x ? 'x' : '~'))}")\n   .add(note(${vl('vd' + v.n, f2(v.detune))})).s("${v.timbre}").vowel("${v.vogal}")\n   .pan(${f2(v.pan)}).lpf(${vl('vl' + v.n, hz(W.lpf * 1.25))})\n   .gain(${vl('vg' + v.n, f2(v.gain * v.ajuste))})${PR}` })),
+    { id: 'prato', roll: true, c: '// prato: contratempos com acento', mudo: W.pratoGain < 0.005,
+      ativo: c => R_PRATO[passo(c, 16, 16)] ? ['xs_' + passo(c, 16, 16)] : [], code:
+      `$: s("white").struct("${vt('xs', R_PRATO.map(x => x ? 'x' : '~'))}")\n   .hpf(7000).decay(.3)\n   .gain(${vl('xg', f2(W.pratoGain))})${PR}` },
+  ].map(b => MUDAS.has(b.id) ? { ...b, mudo: true, roll: false, lider: false, code: b.code.replace(/^\$:/, '_$:') } : b);
+}
+const CODE = { montado: '', t: 0, bs: [] };
+function desenharCodigo(now) {
+  if (now - CODE.t < 200) return; CODE.t = now;
+  const bs = CODE.bs = blocos();
+  const esq = bs.map(b => b.id).join();
+  if (esq !== CODE.montado) {
+    $('code').innerHTML = bs.map(b => `<span class="blk" data-b="${b.id}"><span class="c">${b.c}</span>\n${b.code}\n` +
+      (b.roll ? `<canvas class="roll" data-r="${b.id}"></canvas>` : '') + '\n</span>').join('');
+    CODE.montado = esq;
+    ajustarCodigo(now);
+  }
+  if (now - ultAjuste > 3000) ajustarCodigo(now);
+  for (const b of bs) {
+    const el = $('code').querySelector(`[data-b="${b.id}"]`);
+    el.classList.toggle('mudo', !!b.mudo); el.classList.toggle('lider', !!b.lider);
+    el.querySelector('.c').textContent = b.c;
+    const tmp = document.createElement('div'); tmp.innerHTML = b.code;
+    for (const s of tmp.querySelectorAll('.v')) {
+      const k = s.dataset.k, alvo = el.querySelector(`[data-k="${k}"]`);
+      if (alvo && alvo.textContent !== s.textContent) {
+        alvo.textContent = s.textContent;
+        alvo.classList.add('fl'); setTimeout(() => alvo.classList.remove('fl'), 120);
+      }
+    }
+  }
+}
+
+// no computador o código cabe inteiro na coluna: a letra diminui até não sobrar nada para fora
+const TELA = matchMedia('(min-width: 901px)');
+let fsCodigo = 12.5, ultAjuste = 0;
+function ajustarCodigo(now = performance.now()) {
+  ultAjuste = now;
+  const pre = $('code');
+  if (!TELA.matches) { pre.style.removeProperty('--cfs'); return; }
+  const sobra = () => pre.scrollHeight > pre.clientHeight + 1 || pre.scrollWidth > pre.clientWidth + 1 ||
+    [...pre.querySelectorAll('.blk')].some(b => b.scrollWidth > b.clientWidth + 1);
+  fsCodigo = 17;
+  pre.style.setProperty('--cfs', fsCodigo + 'px');
+  while (sobra() && fsCodigo > 7) { fsCodigo -= 0.5; pre.style.setProperty('--cfs', fsCodigo + 'px'); }
+}
+addEventListener('resize', () => ajustarCodigo());
+
+// a cada quadro: contorna o token que está soando e desenha o pianoroll de cada camada
+const ROLL = { ant: new Set(), janela: [1.5, 0.5] };   // ciclos antes / depois do "agora" (como o _pianoroll do strudel.cc)
+function desenharTocando(c) {
+  const on = new Set();
+  for (const b of CODE.bs) {
+    if (!b.ativo || b.mudo || !AUDIO.on) continue;
+    for (const k of b.ativo(c)) on.add(b.id + '|' + k);
+  }
+  for (const key of new Set([...on, ...ROLL.ant])) {
+    const [id, k] = key.split('|');
+    const el = $('code').querySelector(`[data-b="${id}"] [data-k="${k}"]`);
+    if (el) el.classList.toggle('on', on.has(key));
+  }
+  ROLL.ant = on;
+  for (const cv of $('code').querySelectorAll('canvas.roll')) pianoroll(cv, cv.dataset.r, c);
+}
+
+function pianoroll(cv, id, c) {
+  const w = cv.clientWidth, h = cv.clientHeight; if (!w || !h) return;
+  const dpr = devicePixelRatio || 1;
+  if (cv.width !== Math.round(w * dpr) || cv.height !== Math.round(h * dpr)) { cv.width = Math.round(w * dpr); cv.height = Math.round(h * dpr); }
+  const g = cv.getContext('2d'); g.setTransform(dpr, 0, 0, dpr, 0, 0); g.clearRect(0, 0, w, h);
+  const fg = getComputedStyle(document.body).color;
+  const c0 = c - ROLL.janela[0], c1 = c + ROLL.janela[1], X = t => (t - c0) / (c1 - c0) * w;
+  g.globalAlpha = 0.25; g.fillStyle = fg;
+  for (let k = Math.ceil(c0); k <= c1; k++) g.fillRect(X(k), 0, 1, h);                 // linhas de ciclo
+  let haps = [];
+  const pats = AUDIO.camadas && AUDIO.camadas[id];
+  if (pats) try { for (const p of pats) haps.push(...p.queryArc(c0, c1)); } catch (e) { haps = []; }
+  haps = haps.filter(hp => hp.whole && hp.value && Number.isFinite(Number(hp.value.note)));
+  if (haps.length) {
+    const ns = haps.map(hp => Number(hp.value.note));
+    let lo = Math.min(...ns), hi = Math.max(...ns);
+    if (hi - lo < 12) { const m = (hi + lo) / 2; lo = m - 6; hi = m + 6; }
+    const alt = Math.max(2, h / (hi - lo + 2));
+    for (const hp of haps) {
+      const b = Number(hp.whole.begin), e = Number(hp.whole.end), n = Number(hp.value.note);
+      const gn = clamp(Number(hp.value.gain) / 0.4, 0, 1) || 0;
+      if (gn < 0.01) continue;
+      const x = X(b), ww = Math.max(2, X(e) - x - 1), y = h - (n - lo + 1) * alt;
+      const agora = b <= c && c < e;
+      g.globalAlpha = (agora ? 1 : e <= c ? 0.35 : 0.6) * (0.35 + 0.65 * gn);
+      const bh = Math.max(4, alt - 1);
+      if (agora) g.fillRect(x, y - bh / 2, ww, bh);
+      else { g.lineWidth = 1; g.strokeStyle = fg; g.strokeRect(x + 0.5, y - bh / 2 + 0.5, ww - 1, bh - 1); }
+    }
+  }
+  g.globalAlpha = 1; g.fillStyle = fg; g.fillRect(X(c) - 0.5, 0, 1.5, h);              // agora
+}
+
+/* ───────────── 7. placar, urnas, regiões ───────────── */
+$('grade').innerHTML = REGIOES.map(([nome, ufs], i) =>
+  `<div class="reg"><div class="t">${nome} <span id="rP${i}">–</span></div><div class="b"><i id="rB${i}" style="width:50%"></i></div>` +
+  `<div class="n"><span id="rA${i}">L –</span><span id="rF${i}">F –</span></div><div class="ufs">${ufs.map(u => u.toUpperCase()).join(' ')}</div></div>`).join('');
+
+let ultPlacar = 0;
+function desenharPlacar(S, now) {
+  if (now - ultPlacar < 150) return; ultPlacar = now;
+  const sa = S.sh[DUELO.a] || 0, sb = S.sh[DUELO.b] || 0, tem = S.a + S.b > 0;
+  $('pA').textContent = tem ? fmtPct(sa) : '–';
+  $('pB').textContent = tem ? fmtPct(sb) : '–';
+  $('vA').textContent = tem ? fmtInt(S.a) + ' votos' : ' ';
+  $('vB').textContent = tem ? fmtInt(S.b) + ' votos' : ' ';
+  $('barraI').style.width = (tem ? sa : 50) + '%';
+  // quem lidera fica maior; cada número ganha uma coluna do tamanho dele e nunca passa dela
+  const forca = Math.abs(W.bal), ks = {};
+  for (const [el, n] of [['cA', DUELO.a], ['cB', DUELO.b]]) {
+    const frente = S.lider === n, atras = S.lider && !frente;
+    $(el).classList.toggle('frente', frente); $(el).classList.toggle('atras', !!atras);
+    ks[el] = frente ? 1 + 0.55 * forca : atras ? 1 - 0.4 * forca : 1;
+  }
+  const larg = Math.max(200, $('duelo').clientWidth - 20), soma = ks.cA + ks.cB;
+  $('duelo').style.setProperty('--cols', `${ks.cA.toFixed(3)}fr ${ks.cB.toFixed(3)}fr`);
+  for (const el of ['cA', 'cB']) {
+    const col = larg * ks[el] / soma;
+    const teto = Math.min(120, innerHeight * 0.15) * ks[el];       // não deixa o placar comer a altura da tela
+    $(el).style.setProperty('--fs', Math.max(22, Math.min(col / 3.75, teto)).toFixed(1) + 'px');
+  }
+  let aviso = '';
+  if (!DATA || !DATA.snaps.length) aviso = FONTE.erro || 'aguardando o TSE · a apuração começa às 17h de Brasília';
+  else if (!tem) aviso = 'aguardando as primeiras urnas · a apuração começa às 17h de Brasília';
+  else if (S.lider) aviso = `${CANDIDATOS[S.lider].nome} na frente por ${fmtPct(S.margem)} · ${fmtInt(Math.abs(S.a - S.b))} votos`;
+  if (DATA && DATA.viradas.length && tem) {
+    const nv = DATA.viradas.filter(v => v.t <= (PLAY.vivo ? Infinity : PLAY.t)).length;
+    if (nv) aviso += ` · ${nv} virada${nv > 1 ? 's' : ''}`;
+  }
+  if (S.parado > 0 && tem) aviso += S.pst >= 99.95 ? ' · apuração encerrada' : ' · contagem parada';
+  $('aviso').textContent = aviso;
+
+  $('uSt').textContent = fmtInt(S.st);
+  $('uTs').textContent = 'de ' + fmtInt(S.ts || 499248);
+  $('uPct').textContent = fmtPct(S.pst);
+  $('uBar').style.width = S.pst + '%';
+  $('uVotos').textContent = fmtInt(S.tv) + ' votos apurados';
+  $('uValidos').textContent = S.vv ? fmtInt(S.vv) + ' válidos' : '';
+
+  REGIOES.forEach(([, ufs], i) => {
+    let st = 0, ts = 0, a = 0, b = 0;
+    for (const u of ufs) { const r = S.uf[u]; if (r) { st += r[0]; ts += r[1]; a += r[2]; b += r[3]; } }
+    const ok = a + b > 0, pa = ok ? 100 * a / (a + b) : 50;
+    $('rP' + i).textContent = ts ? fmtPct(100 * st / ts, 1) : '–';
+    $('rB' + i).style.width = pa + '%';
+    $('rA' + i).innerHTML = ok ? (pa > 50 ? '<b>L ' + fmtPct(pa, 1) + '</b>' : 'L ' + fmtPct(pa, 1)) : 'L –';
+    $('rF' + i).innerHTML = ok ? (pa < 50 ? '<b>F ' + fmtPct(100 - pa, 1) + '</b>' : 'F ' + fmtPct(100 - pa, 1)) : 'F –';
+  });
+
+  const q = $('quando');
+  if (PLAY.vivo) q.innerHTML = `<b class="vivo">AO VIVO</b> · ${DATA && DATA.snaps.length ? 'último dado ' + hora(DATA.t1) : hora(Date.now(), false)}`;
+  else q.innerHTML = `<b>⟲ ${hora(PLAY.t)}</b> · fotografia da apuração · ${PLAY.vel === 0 ? 'parada nesse momento' : PLAY.vel > 1 ? '×' + PLAY.vel : 'em tempo real'}`;
+}
+
+/* ───────────── 8. linha do tempo ───────────── */
+const fimTrilho = () => Math.max(Date.now(), DATA ? DATA.t1 : 0);
+const posDe = t => DATA ? clamp((t - DATA.t0) / Math.max(1, fimTrilho() - DATA.t0), 0, 1) : 1;
+function desenharMarcas() {
+  if (!DATA) return;
+  const fim = fimTrilho(), dur = fim - DATA.t0;
+  let h = DATA.viradas.map(v => `<div class="vir" style="left:${(100 * posDe(v.t)).toFixed(2)}%" title="virada ${hora(v.t)}: ${CANDIDATOS[v.para].nome}"></div>`).join('');
+  const passoH = dur > 3 * 3600e3 ? 3600e3 : dur > 90 * 60e3 ? 1800e3 : dur > 30 * 60e3 ? 900e3 : 300e3;
+  for (let t = Math.ceil(DATA.t0 / passoH) * passoH; t < fim; t += passoH) h += `<div class="hora" style="left:${(100 * posDe(t)).toFixed(2)}%">${hora(t, false)}</div>`;
+  $('marcas').innerHTML = h;
+}
+function irPara(t) {
+  if (!DATA) return;
+  if (t >= Date.now() - 5000) { aoVivo(); return; }
+  PLAY.t = clamp(t, DATA.t0, Date.now()); PLAY.vivo = false; syncUI();
+}
+function aoVivo() { PLAY.vivo = true; PLAY.t = Date.now(); syncUI(); }
+function tDoPonteiro(e) { const r = $('trilho').getBoundingClientRect(); return DATA.t0 + clamp((e.clientX - r.left) / r.width, 0, 1) * (fimTrilho() - DATA.t0); }
+$('trilho').addEventListener('pointerdown', e => { if (!DATA) return; PLAY.arrastando = true; $('trilho').setPointerCapture(e.pointerId); irPara(tDoPonteiro(e)); });
+$('trilho').addEventListener('pointermove', e => { if (PLAY.arrastando) irPara(tDoPonteiro(e)); });
+const soltar = () => { PLAY.arrastando = false; };
+$('trilho').addEventListener('pointerup', soltar); $('trilho').addEventListener('pointercancel', soltar);
+
+/* ───────────── 9. UI e laço ───────────── */
+function syncUI() {
+  $('bSom').textContent = AUDIO.on ? '❚❚ pausar som' : '▶ ouvir';
+  $('bSom').classList.toggle('on', AUDIO.on);
+  $('bVivo').classList.toggle('on', PLAY.vivo);
+}
+$('bSom').addEventListener('click', () => AUDIO.on ? desligarAudio() : ligarAudio());
+$('bVivo').addEventListener('click', aoVivo);
+$('vel').addEventListener('change', e => { PLAY.vel = Number(e.target.value); });
+$('vol').addEventListener('input', e => { W.vol = Number(e.target.value); });
+addEventListener('keydown', e => {
+  if (e.target.tagName === 'INPUT' || e.target.tagName === 'SELECT') return;
+  if (e.code === 'Space') { e.preventDefault(); AUDIO.on ? desligarAudio() : ligarAudio(); }
+  else if (e.key === 'ArrowLeft') irPara((PLAY.vivo ? Date.now() : PLAY.t) - 60000);
+  else if (e.key === 'ArrowRight') irPara(PLAY.t + 60000);
+  else if (e.key === 'l' || e.key === 'L') aoVivo();
+});
+
+// o motor roda num timer (continua com a aba em segundo plano, ~1×/s); o desenho, a cada quadro
+let ultimo = performance.now(), ultMarcas = 0, S = { ...VAZIO };
+function motor() {
+  const now = performance.now(), dt = Math.min(1.5, (now - ultimo) / 1000); ultimo = now;
+  if (PLAY.vivo) PLAY.t = Date.now();
+  else if (!PLAY.arrastando) { PLAY.t += dt * 1000 * PLAY.vel; if (PLAY.t >= Date.now() - 2000) aoVivo(); }
+  S = amostra(PLAY.t);
+  atualizarMotor(S, dt);
+}
+let ultQuadro = performance.now();
+function tick(now) {
+  const dt = Math.min(0.1, (now - ultQuadro) / 1000); ultQuadro = now;
+  desenharPlacar(S, now);
+  desenharCodigo(now);
+  desenharTocando(ciclo(dt));
+  if (DATA) {
+    const p = posDe(PLAY.vivo ? fimTrilho() : PLAY.t);
+    $('feito').style.width = (100 * p) + '%'; $('cab').style.left = (100 * p) + '%';
+    if (now - ultMarcas > 30000) { ultMarcas = now; desenharMarcas(); }
+  }
+  requestAnimationFrame(tick);
+}
+syncUI();
+agendar();
+// carrega o Strudel já (sem som) para o pianoroll mostrar o padrão antes de ouvir
+carregarStrudel().then(() => { AUDIO.padrao = AUDIO.padrao || construirPadrao(); }).catch(e => console.warn(e));
+setInterval(motor, 50);
+requestAnimationFrame(tick);
+</script>
 </body>
 </html>
