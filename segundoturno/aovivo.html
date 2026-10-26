@@ -356,7 +356,7 @@ async function buscar() {
 }
 function agendar() {
   buscar().finally(() => {
-    if (!AUDIO.erro) status(`dados: TSE · soma dos 27 estados + exterior · ${FONTE.via}`);
+    if (!AUDIO.erro) status(`dados: TSE · ${ENCERRADA() ? 'apuração gravada até as 22h de 25/10' : 'soma dos 27 estados + exterior · ' + FONTE.via}`);
     if (ENCERRADA() && DATA) return;                 // arquivo: já tem tudo até as 22h, não precisa buscar mais
     setTimeout(agendar, tunelOk() || qs.get('dados') || LOCAL ? 5000 : 60000);
   });
