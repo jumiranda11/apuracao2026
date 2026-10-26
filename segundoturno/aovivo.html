@@ -216,10 +216,14 @@ const status = m => { $('status').textContent = m; };
 
 /* ───────────── 3. dados: eventos por estado → fotografias nacionais ───────────── */
 let DATA = null;
-const PLAY = { t: Date.now(), vivo: true, vel: 1, arrastando: false };
+// a apuração desta página termina às 22h de 25/10: depois disso ela vira um arquivo, parado nesse ponto
+const FIM = Date.parse('2026-10-25T22:00:00-03:00');
+const agora = () => Math.min(Date.now(), FIM);
+const ENCERRADA = () => Date.now() >= FIM;
+const PLAY = { t: agora(), vivo: true, vel: 1, arrastando: false };
 
 function construirDados(hist) {
-  const ev = (hist.ev || []).slice().sort((x, y) => x[0] - y[0]);
+  const ev = (hist.ev || []).filter(e => e[0] * 1000 <= FIM).sort((x, y) => x[0] - y[0]);
   const uf = {}, snaps = [];
   for (const e of ev) {
     uf[e[1]] = e.slice(2);
@@ -250,7 +254,7 @@ function construirDados(hist) {
     s.liderConf = conf;
   }
   const primeiro = snaps.find(s => s.st > 0);
-  const t0 = snaps.length ? (primeiro ? Math.max(snaps[0].t, primeiro.t - 5 * 60000) : snaps[0].t) : Date.now();
+  const t0 = snaps.length ? (primeiro ? Math.max(snaps[0].t, primeiro.t - 5 * 60000) : snaps[0].t) : agora();
   return { snaps, viradas, t0, t1: snaps.length ? snaps[snaps.length - 1].t : t0, atualizado: (hist.atualizado || 0) * 1000 };
 }
 
@@ -281,7 +285,7 @@ function amostra(t) {
     S.sh = { [DUELO.a]: tot ? 100 * S.a / tot : 0, [DUELO.b]: tot ? 100 * S.b / tot : 0 };
   }
   // ao vivo o "agora" da música é o último dado, até ATRASO_VIVO; depois o tempo anda e a música esfria
-  const tm = PLAY.vivo ? Math.max(DATA.t1, Date.now() - ATRASO_VIVO * 1000) : t;
+  const tm = PLAY.vivo ? Math.max(DATA.t1, agora() - ATRASO_VIVO * 1000) : t;
   S.rit = clamp((pstEm(tm) - pstEm(tm - JANELA * 1000)) / JANELA / TAXA_REF, 0, 1.2);
   S.parado = S.pst > 0 && (S.pst >= 99.95 || (tm - a.ultMud) / 1000 > PARADO_APOS) ? 1 : 0;
   const sa = S.sh[DUELO.a] || 0, sb = S.sh[DUELO.b] || 0;
@@ -304,7 +308,7 @@ function aplicar(hist) {
   const novo = construirDados(hist);
   const antes = DATA;
   DATA = novo; FONTE.n++; FONTE.erro = null;
-  if (!antes) { PLAY.t = Date.now(); PLAY.vivo = true; desenharMarcas(); }
+  if (!antes) { PLAY.t = agora(); PLAY.vivo = true; desenharMarcas(); }
   else if (novo.snaps.length !== antes.snaps.length) desenharMarcas();
 }
 async function buscarTunel() {
@@ -353,6 +357,7 @@ async function buscar() {
 function agendar() {
   buscar().finally(() => {
     if (!AUDIO.erro) status(`dados: TSE · soma dos 27 estados + exterior · ${FONTE.via}`);
+    if (ENCERRADA() && DATA) return;                 // arquivo: já tem tudo até as 22h, não precisa buscar mais
     setTimeout(agendar, tunelOk() || qs.get('dados') || LOCAL ? 5000 : 60000);
   });
 }
@@ -684,12 +689,13 @@ function desenharPlacar(S, now) {
   });
 
   const q = $('quando');
-  if (PLAY.vivo) q.innerHTML = `<b class="vivo">AO VIVO</b> · ${DATA && DATA.snaps.length ? 'último dado ' + hora(DATA.t1) : hora(Date.now(), false)}`;
+  if (PLAY.vivo && ENCERRADA()) q.innerHTML = `<b>APURAÇÃO ATÉ 22:00</b> · 25/10${DATA && DATA.snaps.length ? ' · último dado ' + hora(DATA.t1) : ''}`;
+  else if (PLAY.vivo) q.innerHTML = `<b class="vivo">AO VIVO</b> · ${DATA && DATA.snaps.length ? 'último dado ' + hora(DATA.t1) : hora(Date.now(), false)}`;
   else q.innerHTML = `<b>⟲ ${hora(PLAY.t)}</b> · fotografia da apuração · ${PLAY.vel === 0 ? 'parada nesse momento' : PLAY.vel > 1 ? '×' + PLAY.vel : 'em tempo real'}`;
 }
 
 /* ───────────── 8. linha do tempo ───────────── */
-const fimTrilho = () => Math.max(Date.now(), DATA ? DATA.t1 : 0);
+const fimTrilho = () => Math.max(agora(), DATA ? DATA.t1 : 0);
 const posDe = t => DATA ? clamp((t - DATA.t0) / Math.max(1, fimTrilho() - DATA.t0), 0, 1) : 1;
 function desenharMarcas() {
   if (!DATA) return;
@@ -701,10 +707,10 @@ function desenharMarcas() {
 }
 function irPara(t) {
   if (!DATA) return;
-  if (t >= Date.now() - 5000) { aoVivo(); return; }
-  PLAY.t = clamp(t, DATA.t0, Date.now()); PLAY.vivo = false; syncUI();
+  if (t >= agora() - 5000) { aoVivo(); return; }
+  PLAY.t = clamp(t, DATA.t0, agora()); PLAY.vivo = false; syncUI();
 }
-function aoVivo() { PLAY.vivo = true; PLAY.t = Date.now(); syncUI(); }
+function aoVivo() { PLAY.vivo = true; PLAY.t = agora(); syncUI(); }
 function tDoPonteiro(e) { const r = $('trilho').getBoundingClientRect(); return DATA.t0 + clamp((e.clientX - r.left) / r.width, 0, 1) * (fimTrilho() - DATA.t0); }
 $('trilho').addEventListener('pointerdown', e => { if (!DATA) return; PLAY.arrastando = true; $('trilho').setPointerCapture(e.pointerId); irPara(tDoPonteiro(e)); });
 $('trilho').addEventListener('pointermove', e => { if (PLAY.arrastando) irPara(tDoPonteiro(e)); });
@@ -716,6 +722,7 @@ function syncUI() {
   $('bSom').textContent = AUDIO.on ? '❚❚ pausar som' : '▶ ouvir';
   $('bSom').classList.toggle('on', AUDIO.on);
   $('bVivo').classList.toggle('on', PLAY.vivo);
+  $('bVivo').textContent = ENCERRADA() ? '■ 22h' : '● ao vivo';
 }
 $('bSom').addEventListener('click', () => AUDIO.on ? desligarAudio() : ligarAudio());
 $('bVivo').addEventListener('click', aoVivo);
@@ -724,7 +731,7 @@ $('vol').addEventListener('input', e => { W.vol = Number(e.target.value); });
 addEventListener('keydown', e => {
   if (e.target.tagName === 'INPUT' || e.target.tagName === 'SELECT') return;
   if (e.code === 'Space') { e.preventDefault(); AUDIO.on ? desligarAudio() : ligarAudio(); }
-  else if (e.key === 'ArrowLeft') irPara((PLAY.vivo ? Date.now() : PLAY.t) - 60000);
+  else if (e.key === 'ArrowLeft') irPara((PLAY.vivo ? agora() : PLAY.t) - 60000);
   else if (e.key === 'ArrowRight') irPara(PLAY.t + 60000);
   else if (e.key === 'l' || e.key === 'L') aoVivo();
 });
@@ -733,8 +740,8 @@ addEventListener('keydown', e => {
 let ultimo = performance.now(), ultMarcas = 0, S = { ...VAZIO };
 function motor() {
   const now = performance.now(), dt = Math.min(1.5, (now - ultimo) / 1000); ultimo = now;
-  if (PLAY.vivo) PLAY.t = Date.now();
-  else if (!PLAY.arrastando) { PLAY.t += dt * 1000 * PLAY.vel; if (PLAY.t >= Date.now() - 2000) aoVivo(); }
+  if (PLAY.vivo) PLAY.t = agora();
+  else if (!PLAY.arrastando) { PLAY.t += dt * 1000 * PLAY.vel; if (PLAY.t >= agora() - 2000) aoVivo(); }
   S = amostra(PLAY.t);
   atualizarMotor(S, dt);
 }
